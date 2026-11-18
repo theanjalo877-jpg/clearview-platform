@@ -1,7 +1,6 @@
-from collections import Counter
 from datetime import date, datetime, timedelta
-from html import escape
 from io import BytesIO, StringIO
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from zipfile import BadZipFile
 import csv
@@ -11,13 +10,11 @@ import streamlit as st
 from openpyxl import Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from finance import CLOSED, findings, load, loan_schedule, projection
+from finance import CLOSED, cash_priorities, funding_gap, load, loan_schedule, matching_references, projection
 
-today = datetime.now(ZoneInfo("Asia/Dubai")).date()
+HERO = Path(__file__).with_name("finance_hero.html")
 
-
-
-def demo():
+def demo(today):
     book = Workbook()
     sheet = book.active
     sheet.title = "Customer Invoice Tracker"
@@ -26,9 +23,8 @@ def demo():
     sheet.append(["Cedar Retail", "Demo business", "INV-211", 14500, 0, today + timedelta(days=20)])
     sheet = book.create_sheet("Supplier Payables")
     sheet.append(["Supplier Name", "Company", "Invoice Number", "Amount Payable Gross (AED)", "Amount Paid (AED)", "Due Date"])
-    for _ in range(2):
-        sheet.append(["Sample Freight", "Demo business", "SF-72", 3000, 0, today + timedelta(days=4)])
-    sheet.append(["Sample Materials", "Demo business", "SM-12", 12000, 0, today + timedelta(days=7)])
+    sheet.append(["Sample Freight", "Demo business", "SF-72", 3000, 0, today + timedelta(days=4)])
+    sheet.append(["Sample Materials", "Demo business", "SM-12", 12000, 0, today + timedelta(days=6)])
     buffer = BytesIO()
     book.save(buffer)
     return buffer.getvalue()
@@ -44,37 +40,8 @@ def downloads(headers, rows):
 
 
 def render():
-    st.markdown("""
-    <style>
-    .block-container {max-width: 1260px; padding-top: 3.5rem;}
-    .cv-hero {position:relative; overflow:hidden; border-radius:26px; min-height:238px;
-     background:linear-gradient(116deg,#20133e,#46308b 75%,#5336ad); color:#fff;
-     padding:34px 38px; margin-bottom:20px; display:flex; align-items:center; isolation:isolate;}
-    .cv-copy {position:relative; z-index:2; max-width:550px}
-    .cv-brand {font-size:.78rem; color:#dfd4ff; font-weight:750; letter-spacing:.16em}
-    .cv-title {font-size:clamp(2rem,4vw,3.5rem); line-height:1.04; margin:.45em 0 .25em; font-weight:780}
-    .cv-hero p {color:#e8e0ff; font-size:1rem; margin:0}
-    .cv-art {position:absolute; right:1%; width:39%; min-width:210px; opacity:.9}
-    .cv-line {stroke-dasharray:500; stroke-dashoffset:0; animation:draw 2s ease-out both}
-    .cv-orbit {animation:pulse 3s ease-in-out infinite; transform-origin:265px 49px}
-    @keyframes draw {from {stroke-dashoffset:500}}
-    @keyframes pulse {50% {transform:scale(1.5);opacity:.45}}
-    @media(max-width:680px){.cv-hero{padding:24px}.cv-art{opacity:.23;width:58%}}
-    @media(prefers-reduced-motion:reduce){.cv-line,.cv-orbit{animation:none}}
-    [data-testid="stMetric"] {background:#fff; border:1px solid #e8e4f4; border-radius:16px; padding:14px;}
-    </style>
-    <div class="cv-hero"><div class="cv-copy"><div class="cv-brand">◈ CLEARVIEW · BUSINESS INTELLIGENCE</div>
-    <div class="cv-title">Know where your<br>money stands.</div>
-    <p>Find overdue cash, check payments and see when you may need more money.</p></div>
-    <svg class="cv-art" viewBox="0 0 320 185" fill="none" aria-hidden="true">
-    <rect x="12" y="18" width="294" height="148" rx="22" fill="#ffffff" fill-opacity=".08" stroke="#cbb5ff" stroke-opacity=".35"/>
-    <path d="M30 129H288 M30 95H288 M30 61H288" stroke="#e7d9ff" stroke-opacity=".22"/>
-    <path d="M35 133L73 115L105 124L143 87L174 96L210 69L235 73L265 49L286 40V151H35Z" fill="#a58bff" fill-opacity=".26"/>
-    <path class="cv-line" d="M35 133L73 115L105 124L143 87L174 96L210 69L235 73L265 49L286 40" stroke="#e0ffad" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle class="cv-orbit" cx="265" cy="49" r="11" fill="#e0ffad" fill-opacity=".24"/>
-    <circle cx="265" cy="49" r="4" fill="#e0ffad"/>
-    </svg></div>
-    """, unsafe_allow_html=True)
+    today = datetime.now(ZoneInfo("Asia/Dubai")).date()
+    st.markdown(HERO.read_text(encoding="utf-8"), unsafe_allow_html=True)
 
     with st.container(border=True):
         main, example = st.columns([3, 1])
@@ -88,7 +55,7 @@ def render():
     entries, coverage, issues = [], [], []
     if upload is not None or sample:
         try:
-            entries, coverage, issues = load(upload.getvalue() if upload is not None else demo(), fallback)
+            entries, coverage, issues = load(upload.getvalue() if upload is not None else demo(as_of), fallback)
         except (ValueError, TypeError, OSError, BadZipFile, KeyError, InvalidFileException):
             st.error("Clearview could not read this workbook. Save an unprotected Excel copy and check the sheet size before retrying.")
     with st.sidebar:
@@ -102,55 +69,51 @@ def render():
     scope = [e for e in entries if (e.company, e.currency) == (company, currency)]
     if sample and upload is None:
         st.caption("Sample data · Fictional transactions")
-    leaks, forecast, loans, sources = st.tabs(["Cash leaks", "Cash forecast", "Loan planner", "Workbook details"])
+    groups = matching_references(scope)
+    ambiguous = {e.source for group in groups for e in group if e.kind in {"invoice", "payable"}}
+    overdue, receipts, bills = cash_priorities(scope, as_of, ambiguous)
+    priorities, forecast, loans, sources = st.tabs(["Cash priorities", "Cash forecast", "Loan planner", "Workbook details"])
 
-    with leaks:
-        st.header("What needs your attention?")
+    with priorities:
+        st.header("What should I do this week?")
         if not scope:
             if coverage and any(kind != "No supported table" for _, kind, _, _ in coverage):
-                st.info("Clearview recognized your template. Add invoice, bill, expense or cash movement rows to see findings. Check Workbook details for rows that need correction.")
+                st.info("ClearView recognized your template. Add populated invoice, bill or cash movement rows to see your cash priorities. See Workbook details for rows that need correction.")
             elif coverage:
-                st.info("Clearview couldn’t identify a supported table. Check Workbook details for the column combinations it can read.")
+                st.info("ClearView couldn’t identify a supported table. See Workbook details for the column combinations it can read.")
             else:
                 st.info("Upload a workbook or try the sample above.")
         else:
-            overdue, results = findings(scope, as_of)
+            has_invoices = any(e.kind == "invoice" for e in scope)
+            has_bills = any(e.kind == "payable" for e in scope)
             left, mid, right = st.columns(3)
-            left.metric("Overdue customer cash", format_cash(sum(e.amount for e in overdue)))
-            mid.metric("Possible duplicate groups", sum(title.startswith("Possible duplicate") for title, *_ in results))
-            right.metric("Missing invoice due dates", sum(title.startswith("Missing") for title, *_ in results))
-            st.caption("Overdue cash is money to follow up on. Possible duplicates require a check against the original record. The figures cover the selected business and currency.")
-            if not results:
-                if any(e.kind in {"invoice", "payable", "actual"} for e in scope):
-                    st.info("No findings from the available invoice, bill and payment checks.")
-                else:
-                    st.info("Add customer invoices, supplier bills or actual payments to check for cash leaks.")
-            if not any(e.kind == "invoice" for e in scope):
-                st.caption("Customer invoice data is needed to measure overdue balances or underbilling.")
-            if overdue:
-                ageing = [0, 0, 0, 0]
-                for entry in overdue:
-                    days_late = (as_of - entry.day).days
-                    ageing[min((days_late - 1) // 30, 3)] += entry.amount
-                chart = go.Figure(go.Bar(
-                    x=["1–30 days", "31–60 days", "61–90 days", "91+ days"],
-                    y=[float(value) for value in ageing],
-                    marker_color=["#9a84ed", "#7553d8", "#5b39bc", "#40267e"],
-                    hovertemplate=f"%{{x}}<br>{currency} %{{y:,.2f}}<extra></extra>",
-                ))
-                chart.update_layout(title="Overdue cash by age", template="plotly_white", height=250,
-                                    margin=dict(l=16, r=16, t=43, b=16), yaxis_title=currency)
-                st.plotly_chart(chart, config={"displayModeBar": False}, key="overdue-ageing")
-            for title, amount, detail, action, source in results[:100]:
-                with st.container(border=True):
-                    st.subheader(f"{title} · {format_cash(amount)}")
-                    st.text(detail)
-                    st.markdown(f"**Next step**  {action}")
-                    st.caption("Workbook rows · " + escape(source))
-            if results:
-                if len(results) > 100:
-                    st.caption("Showing the first 100 findings. Download the full list below.")
-                st.download_button("Download findings", downloads(["Finding", "Amount", "Details", "Next step", "Workbook rows"], results), "clearview-findings.csv", "text/csv")
+            left.metric("Overdue customer balances", format_cash(sum(e.amount for e in overdue)) if has_invoices else "Unavailable")
+            mid.metric("Customer payments due in 7 days", format_cash(sum(e.amount for e in receipts)) if has_invoices else "Unavailable")
+            right.metric("Supplier bills due now or in 7 days", format_cash(sum(e.amount for e in bills)) if has_bills else "Unavailable")
+            st.caption(f"Seven-day window · {as_of:%d %b} to {as_of + timedelta(days=6):%d %b %Y}. Supplier totals include overdue bills. Undated and ambiguous rows are listed in Workbook details.")
+            if not has_invoices and not has_bills:
+                st.info("This view needs invoice or supplier bill rows. Use Cash forecast for planned cash movements.")
+            actions = [
+                ("Follow up", e, "Check for a recent receipt, then ask the customer for a payment date.")
+                for e in overdue
+            ] + [
+                ("Confirm receipt", e, "Confirm the customer’s scheduled payment date.")
+                for e in receipts
+            ] + [
+                ("Review bill", e, "Check approval and bank records before scheduling payment.")
+                for e in bills
+            ]
+            if actions:
+                st.subheader("Your action list")
+                headers = ["Action", "Customer or supplier", "Reference", "Due date", f"Open balance ({currency})", "Workbook row", "Next step"]
+                action_rows = [(action, e.party or "—", e.ref or "—", e.day, float(e.amount), e.source, step)
+                               for action, e, step in actions]
+                st.dataframe([dict(zip(headers, row)) for row in action_rows[:150]], hide_index=True)
+                if len(action_rows) > 150:
+                    st.caption("Showing the first 150 items. Download the action list for all rows.")
+                st.download_button("Download action list", downloads(headers, action_rows), "clearview-action-list.csv", "text/csv")
+            elif has_invoices or has_bills:
+                st.info("No dated items in this week’s action list. Check Workbook details for outstanding items that couldn’t be scheduled.")
 
     with loans:
         st.header("Plan a loan payment")
@@ -174,7 +137,9 @@ def render():
     with forecast:
         st.header("How much extra cash might you need?")
         a, b, c, d = st.columns(4)
-        opening = a.number_input(f"Cash available now ({currency})", value=None, step=1000.0, help="Enter the verified bank and cash balance at the start of the report date.")
+        opening = a.number_input(f"Cash available now ({currency})", value=10000.0 if sample and upload is None else None,
+                                 key=f"opening-{company}-{currency}-{'sample' if sample and upload is None else 'workbook'}",
+                                 step=1000.0, help="Enter the verified bank and cash balance at the start of the report date.")
         buffer = b.number_input(f"Minimum cash to keep ({currency})", min_value=0.0, value=0.0, step=500.0)
         days = c.selectbox("Forecast length", [30, 60, 90, 180], index=2)
         delay = d.slider("Receipt delay (days)", 0, 60, 14)
@@ -182,55 +147,103 @@ def render():
                          index=0 if any(e.kind == "forecast" and e.amount for e in scope) else 1)
         types = {"Planned cash movements": {"forecast"}, "Open invoices and supplier bills": {"invoice", "payable"}, "Loan only": set()}[using]
         selected = [e for e in scope if e.kind in types and e.status not in CLOSED and e.amount and (e.kind == "forecast" or e.amount > 0)]
-        counts = Counter((e.kind, e.party.casefold(), e.ref.casefold()) for e in selected if e.party and e.ref)
-        repeated = {key for key, count in counts.items() if count > 1 and key[0] != "forecast"}
-        events = []
-        missing = past = duplicate_rows = 0
+        scheduled = []
+        missing = past = ambiguous_rows = 0
         for entry in selected:
-            if (entry.kind, entry.party.casefold(), entry.ref.casefold()) in repeated:
-                duplicate_rows += 1
+            if entry.source in ambiguous:
+                ambiguous_rows += 1
             elif entry.day is None:
                 missing += 1
             elif entry.day < as_of and entry.kind != "payable":
                 past += 1
             else:
-                events.append((max(entry.day, as_of), -entry.amount if entry.kind == "payable" else entry.amount))
+                scheduled.append((entry, max(entry.day, as_of), -entry.amount if entry.kind == "payable" else entry.amount))
+        events = [(due, amount) for _, due, amount in scheduled]
         if include:
             events.extend((due, -amount) for due, amount, *_ in schedule if due >= as_of)
             if types:
                 st.caption("Loan payments are added separately. Use workbook rows that exclude this loan to avoid counting it twice.")
-        if missing or past or duplicate_rows:
-            st.warning(f"Excluded rows · {missing} missing a date · {past} past-due receipts or past planned movements · {duplicate_rows} possible duplicate invoice or bill rows. Correct duplicates and update the expected dates to include them in the next forecast.")
+        if missing or past or ambiguous_rows:
+            st.warning(f"Excluded rows · {missing} missing a date · {past} past-due receipts or past planned movements · {ambiguous_rows} rows sharing an invoice or bill reference. Review the rows in Workbook details and update unresolved dates or records before using this forecast.")
         if any(e.kind == "payable" and e.day and e.day < as_of for e in selected):
             st.caption("Overdue supplier bills with a usable date are assumed payable on the report date.")
         in_window = sum(as_of <= due <= as_of + timedelta(days=days) for due, _ in events)
         if opening is None:
             st.info("Enter your verified cash balance to calculate a funding gap.")
-        elif not in_window:
+        elif not in_window and not (using == "Open invoices and supplier bills" and overdue):
             st.info("No usable cash movements or included loan payments fall within this period. Add dated entries or choose a different forecast period.")
         else:
             rows = projection(events, opening, as_of, days, delay, buffer)
-            low_base = min(row[1] for row in rows)
-            low_delayed = min(row[2] for row in rows)
-            gap = max(0, buffer - min(low_base, opening))
-            stress = max(0, buffer - min(low_delayed, opening))
+            gap = funding_gap(rows, opening, buffer)
+            stress = funding_gap(rows, opening, buffer, scenario=2)
             first_gap = as_of if opening < buffer else next((r[0] for r in rows if r[1] < buffer), None)
             a, b, c = st.columns(3)
             a.metric("Extra cash needed · expected", format_cash(gap))
             b.metric("Extra cash needed · receipts delayed", format_cash(stress))
             c.metric("First day below minimum", first_gap.strftime("%d %b %Y") if first_gap else "None in this period")
+            scenario_rows = None
+            end = as_of + timedelta(days=days)
+            scheduled_choices = {
+                i: (entry, due, amount) for i, (entry, due, amount) in enumerate(scheduled)
+                if due <= end and (amount > 0 or due < end)
+            }
+            if using == "Open invoices and supplier bills":
+                scheduled_choices.update({len(scheduled) + i: (e, None, e.amount) for i, e in enumerate(overdue)})
+            if scheduled_choices:
+                with st.expander("Test a cash decision", expanded=True):
+                    st.caption("Try one change to a payment date and compare with the expected forecast. The workbook stays as uploaded.")
+                    labels = {}
+                    for i, (entry, due, amount) in scheduled_choices.items():
+                        task = "Collect overdue" if due is None else "Collect sooner" if amount > 0 else "Pay later"
+                        labels[i] = f"{task} · {entry.party or entry.category or 'Cash movement'} · {format_cash(abs(amount))} · {entry.source}"
+                    choice = st.selectbox("Which cash movement could change?", list(scheduled_choices), index=None,
+                                          format_func=labels.__getitem__, placeholder="Choose a receipt or payment")
+                    if choice is not None:
+                        _, due, amount = scheduled_choices[choice]
+                        earliest = due + timedelta(days=1) if due and amount < 0 else as_of
+                        latest = due if due and amount > 0 else end
+                        new_date = st.date_input("Revised payment date", min_value=earliest, max_value=latest,
+                                                 value=earliest, key=f"decision-{company}-{currency}-{scheduled_choices[choice][0].source}-{earliest}-{latest}")
+                        adjusted = events.copy()
+                        if due is None:
+                            adjusted.append((new_date, amount))
+                        else:
+                            adjusted[choice] = (new_date, amount)
+                        scenario_rows = projection(adjusted, opening, as_of, days, delay, buffer)
+                        revised = funding_gap(scenario_rows, opening, buffer)
+                        reduction = gap - revised
+                        a, b = st.columns(2)
+                        a.metric("Extra cash needed with this change", format_cash(revised))
+                        b.metric("Reduction in funding gap", format_cash(reduction))
+                        if reduction == 0 and gap > 0:
+                            st.caption("This change does not reduce the largest shortfall in the period. Try a different date or cash movement.")
+                        if due is None:
+                            st.caption("This scenario assumes the full overdue balance is collected on the revised date.")
+                        elif amount < 0:
+                            st.caption("Use a revised supplier date only if it can be agreed.")
             chart = go.Figure()
-            for index, label, color, dash in [(1, "Expected cash", "#6244da", "solid"), (2, "Receipts delayed", "#c75b29", "dash"), (3, "Cash minimum", "#677185", "dot")]:
+            for index, label, color, dash in [(1, "Expected cash", "#087a72", "solid"), (2, "Receipts delayed", "#ba562b", "dash"), (3, "Cash minimum", "#687789", "dot")]:
                 chart.add_scatter(x=[r[0] for r in rows], y=[r[index] for r in rows], name=label,
                                   mode="lines", line={"color": color, "dash": dash, "shape": "hv"})
+            if scenario_rows:
+                chart.add_scatter(x=[row[0] for row in scenario_rows], y=[row[1] for row in scenario_rows],
+                                  name="With your change", mode="lines",
+                                  line={"color": "#5042c2", "width": 3, "shape": "hv"})
             chart.update_layout(template="plotly_white", height=365, hovermode="x unified",
                                 margin=dict(l=18, r=18, t=12, b=16), legend=dict(orientation="h", y=-.22),
                                 yaxis_title=currency)
             st.plotly_chart(chart, config={"displayModeBar": False})
             if gap:
-                st.markdown(f"**Next step**  By {first_gap:%d %b}, check which receipts can arrive sooner or which supplier deadlines can move. Plan for up to **{format_cash(gap)}** in extra cash if those dates hold.")
+                st.markdown(f"**Next step**  By {first_gap:%d %b}, confirm which receipts can arrive sooner or whether a supplier can agree to a later date. The expected schedule needs up to **{format_cash(gap)}** in extra cash.")
+            elif stress:
+                delayed_gap_day = next(row[0] for row in rows if row[2] < buffer)
+                st.markdown(f"**Next step**  Confirm customer payment dates. With a {delay}-day delay on receipts, cash first falls below your minimum on **{delayed_gap_day:%d %b}**.")
             st.caption(f"{in_window} cash movements in the period. The chart shows end-of-day balances. The delayed scenario moves receipts {delay} days later and keeps payment dates fixed. Expenses and actual bank activity are reflected through the opening balance or dated forecast entries.")
-            st.download_button("Download forecast", downloads(["Date", "Expected cash", "Receipts delayed", "Cash minimum"], rows), "clearview-forecast.csv", "text/csv")
+            headers = ["Date", "Expected cash", "Receipts delayed", "Cash minimum"]
+            if scenario_rows:
+                headers.append("With your change")
+                rows = [(*row, scenario[1]) for row, scenario in zip(rows, scenario_rows)]
+            st.download_button("Download forecast", downloads(headers, rows), "clearview-forecast.csv", "text/csv")
 
     with sources:
         actual = [e for e in scope if e.kind == "actual" and e.day <= as_of]
@@ -249,6 +262,24 @@ def render():
         if issues:
             st.subheader("Rows to check")
             st.dataframe([{"Workbook row": source, "What to check": issue} for source, issue in issues], hide_index=True)
+        pending = [e for e in scope if e.kind in {"invoice", "payable"} and e.amount > 0
+                   and e.status not in CLOSED and e.day is None]
+        if pending:
+            st.subheader("Open balances missing a due date")
+            st.dataframe([{"Customer or supplier": e.party, "Reference": e.ref, f"Open balance ({currency})": float(e.amount),
+                           "Workbook row": e.source} for e in pending], hide_index=True)
+        if groups:
+            st.subheader("Matching references to review")
+            st.caption("These rows share identifiers. Check whether they’re separate instalments, repeated entries, or already settled. Matching references alone don’t establish a loss.")
+            st.dataframe([{"Record type": e.kind, "Counterparty": e.party, "Reference": e.ref, "Date": e.day,
+                           f"Recorded amount ({currency})": float(abs(e.amount)), "Workbook row": e.source}
+                          for group in groups for e in group], hide_index=True)
+        underbilled = [e for e in scope if e.underbilled and e.source not in ambiguous]
+        if underbilled:
+            st.subheader("Invoices below their agreed amount")
+            st.caption("Compare against the approved price, discounts and changes before raising an additional charge.")
+            st.dataframe([{"Customer": e.party, "Reference": e.ref, f"Difference ({currency})": float(e.underbilled),
+                           "Workbook row": e.source} for e in underbilled], hide_index=True)
         st.markdown("""
     **Customer and supplier balances** need an invoice reference, a customer or supplier name or a clearly named sheet, and an amount. Add a due date and payment status for better results. For underbilling checks, add an **Agreed Gross Amount** column for the agreed value of that specific invoice, including tax on the same basis as the invoice amount.
 
