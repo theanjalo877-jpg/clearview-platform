@@ -1,0 +1,109 @@
+<style>
+.ops-hero {position:relative;isolation:isolate;display:grid;grid-template-columns:1fr 1.22fr;align-items:center;
+ min-height:360px;overflow:hidden;border:1px solid #91bbf127;border-radius:28px;
+ background:radial-gradient(ellipse at 75% 45%,#283c75 0%,transparent 50%),linear-gradient(125deg,#0b1324,#121c38 65%,#172744);
+ color:#f3f8ff;box-shadow:0 18px 54px #0a16282e}
+.ops-copy {z-index:1;padding:36px 0 38px 44px}
+.ops-brand {color:#c1ccff;font:700 .73rem ui-monospace,monospace;letter-spacing:.16em}
+.ops-title {color:inherit!important;font-size:clamp(2.3rem,3.9vw,4.05rem)!important;line-height:.99!important;
+ font-weight:780!important;letter-spacing:-.06em;margin:.38em 0 .27em!important;padding:0!important}
+.ops-hero p {color:#c8d6ed;max-width:380px;margin:0;font-size:clamp(.93rem,1.23vw,1.08rem)}
+.ops-art {display:block;width:100%;max-height:396px;overflow:visible}
+.ops-panel {animation:ops-lift 1.5s cubic-bezier(.19,1,.22,1) both}
+.ops-stock {animation-delay:.23s}
+.ops-staff {animation-delay:.47s}
+.ops-route {stroke-dasharray:380;animation:ops-trace 1.95s ease-out .32s both}
+.ops-route-purple {animation-delay:.65s}
+.ops-route-blue {animation-delay:.91s}
+.ops-packet {opacity:0;offset-rotate:0deg;animation:ops-travel 1.4s linear 2}
+.ops-packet-sales {offset-path:path("M242 104 L291 134 L291 169 L330 192");animation-delay:.85s}
+.ops-packet-stock {offset-path:path("M210 250 L254 275 L330 232 L330 192");animation-delay:1.15s}
+.ops-packet-staff {offset-path:path("M469 257 L421 284 L364 253 L364 213 L330 192");animation-delay:1.4s}
+.ops-bloom {transform-box:fill-box;transform-origin:center;animation:ops-bloom 1s ease-out 3 both;animation-delay:1.45s}
+.ops-bar {transform-box:fill-box;transform-origin:center bottom;animation:ops-grow .95s cubic-bezier(.19,1,.22,1) .5s both}
+.ops-bar:nth-child(2) {animation-delay:.7s}
+.ops-bar:nth-child(3) {animation-delay:.9s}
+@keyframes ops-lift {from {transform:translateY(26px);opacity:0}to {transform:translateY(0);opacity:1}}
+@keyframes ops-trace {from {stroke-dashoffset:380;opacity:0}to {stroke-dashoffset:0;opacity:1}}
+@keyframes ops-travel {0% {offset-distance:0%;opacity:0}14%,85% {opacity:1}100% {offset-distance:100%;opacity:0}}
+@keyframes ops-bloom {0% {transform:scale(.66);opacity:.65}100% {transform:scale(1.85);opacity:0}}
+@keyframes ops-grow {from {transform:scaleY(.08);opacity:.32}to {transform:scaleY(1);opacity:1}}
+@media(max-width:680px) {
+ .ops-hero{grid-template-columns:1fr;min-height:0}
+ .ops-copy{padding:28px 23px 0}
+ .ops-art{width:min(100%,470px);max-height:240px;justify-self:center;margin-top:-6px}
+}
+@media(prefers-reduced-motion:reduce){
+ .ops-hero *{animation:none!important}
+}
+</style>
+<div class="ops-hero">
+  <div class="ops-copy">
+    <div class="ops-brand">◈ ClearView Business Intelligence</div>
+    <h1 class="ops-title">See where operations<br>need attention.</h1>
+    <p>Upload sales, inventory or workforce data to spot trends, investigate problems and decide where to act.</p>
+  </div>
+  <svg class="ops-art" viewBox="0 0 590 376" fill="none" aria-hidden="true">
+    <defs>
+      <linearGradient id="ops-tile" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="#273d67"/><stop offset="1" stop-color="#142339"/>
+      </linearGradient>
+      <linearGradient id="ops-core" x1="0" y1="0" x2="1" y2="1">
+        <stop stop-color="#6588fa"/><stop offset="1" stop-color="#434a95"/>
+      </linearGradient>
+      <radialGradient id="ops-halo"><stop stop-color="#a292ff" stop-opacity=".35"/><stop offset="1" stop-color="#a292ff" stop-opacity="0"/></radialGradient>
+      <pattern id="ops-mesh" width="20" height="20" patternUnits="userSpaceOnUse" patternTransform="matrix(1 .55 -1 .55 295 48)">
+        <path d="M20 0H0V20" stroke="#b9ccff" stroke-opacity=".23" stroke-width=".75"/>
+      </pattern>
+    </defs>
+    <ellipse cx="319" cy="193" rx="258" ry="169" fill="url(#ops-halo)"/>
+    <path d="M37 207 305 61 561 201 293 347Z" fill="url(#ops-mesh)" stroke="#7f9bc4" stroke-opacity=".6"/>
+    <path d="m37 207 256 140 268-146v11L293 359 37 219Z" fill="#131f3c" fill-opacity=".75" stroke="#7f9bc4" stroke-opacity=".45"/>
+    <path d="M82 208 300 89 510 204 293 323Z" stroke="#9bbdff" stroke-opacity=".3" stroke-dasharray="3 7"/>
+    <path class="ops-route" d="M242 104 291 134 291 169 330 192" stroke="#7cf7d5" stroke-width="2.6" stroke-linejoin="round"/>
+    <path class="ops-route ops-route-purple" d="M210 250 254 275 330 232 330 192" stroke="#c7a8ff" stroke-width="2.6" stroke-linejoin="round"/>
+    <path class="ops-route ops-route-blue" d="M469 257 421 284 364 253 364 213 330 192" stroke="#90c9ff" stroke-width="2.6" stroke-linejoin="round"/>
+    <g class="ops-panel ops-sales">
+      <path d="M87 103 166 60 249 105 169 148Z" fill="url(#ops-tile)" stroke="#93efd5" stroke-width="1.3"/>
+      <path d="m87 103 82 45 80-43v8l-80 44-82-45Z" fill="#1a394b" stroke="#7ed6c3"/>
+      <g fill="#8efbdb" stroke="#c1ffeb" stroke-width=".55">
+        <path class="ops-bar" d="m135 103 13-7 12 7-13 7v10l-12-7Z"/>
+        <path class="ops-bar" d="m153 94 13-7 12 7-13 7v20l-12-7Z"/>
+        <path class="ops-bar" d="m172 84 13-7 12 7-13 7v31l-12-7Z"/>
+      </g>
+      <path d="M110 92V69h-21" stroke="#8efbdb" stroke-opacity=".65" stroke-dasharray="3 4"/>
+      <text x="89" y="60" fill="#a9ffe6" font-family="monospace" font-size="11" letter-spacing="1.6">SALES</text>
+    </g>
+    <g class="ops-panel ops-stock">
+      <path d="M70 239 144 198 222 241 147 282Z" fill="url(#ops-tile)" stroke="#c9aaff" stroke-width="1.3"/>
+      <path d="m70 239 77 43 75-41v8l-75 42-77-43Z" fill="#302a54" stroke="#a68bdc"/>
+      <g stroke="#d8c6ff" stroke-width="1.1" fill="#9a69db" fill-opacity=".32">
+        <path d="m108 235 13-7 16 9-14 8Zm0 0v13l15 9 14-8v-12m-14 8v12"/>
+        <path d="m134 221 13-7 16 9-14 8Zm0 0v13l15 9 14-8v-12m-14 8v12"/>
+        <path d="m151 239 13-7 16 9-14 8Zm0 0v13l15 9 14-8v-12m-14 8v12"/>
+      </g>
+      <path d="M99 266v33H78" stroke="#cdadff" stroke-opacity=".7" stroke-dasharray="3 4"/>
+      <text x="78" y="315" fill="#dbc6ff" font-family="monospace" font-size="11" letter-spacing="1.6">INVENTORY</text>
+    </g>
+    <g class="ops-panel ops-staff">
+      <path d="M419 244 482 209 553 248 489 284Z" fill="url(#ops-tile)" stroke="#9bd1ff" stroke-width="1.3"/>
+      <path d="m419 244 70 40 64-36v8l-64 36-70-39Z" fill="#21395d" stroke="#7cafe2"/>
+      <g stroke="#c5e7ff" stroke-width="1.55" stroke-linecap="round">
+        <circle cx="470" cy="239" r="4"/>
+        <circle cx="483" cy="230" r="4"/>
+        <circle cx="496" cy="239" r="4"/>
+        <path d="M462 251v-2q8-8 16 0m-2-8q7-8 14 0m-2 10v-2q8-8 16 0v2"/>
+      </g>
+      <path d="M515 227v-30h33" stroke="#a4d9ff" stroke-opacity=".75" stroke-dasharray="3 4"/>
+      <text x="475" y="186" fill="#bedfff" font-family="monospace" font-size="11" letter-spacing="1.6">WORKFORCE</text>
+    </g>
+    <path d="M277 191 328 163 382 193 330 222Z" fill="#131f37" stroke="#a6b7fd"/>
+    <path d="M288 178 328 156 371 180 330 203Z" fill="url(#ops-core)" stroke="#d2d9ff" stroke-width="1.25"/>
+    <path d="m288 178 42 25 41-23v8l-41 24-42-25Z" fill="#324781" stroke="#8c9dd9"/>
+    <path d="m313 178 8 3 8-9 8 5 10-5" stroke="#eff5ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <ellipse class="ops-bloom" cx="330" cy="192" rx="39" ry="19" stroke="#d0dcff" stroke-opacity=".7"/>
+    <circle class="ops-packet ops-packet-sales" r="4" fill="#aaffec"/>
+    <circle class="ops-packet ops-packet-stock" r="4" fill="#e3d1ff"/>
+    <circle class="ops-packet ops-packet-staff" r="4" fill="#c8e6ff"/>
+  </svg>
+</div>
