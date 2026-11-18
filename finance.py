@@ -1,5 +1,5 @@
 from calendar import monthrange
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -183,40 +183,40 @@ def load(data, fallback_currency):
     return entries, coverage, issues
 
 
-def findings(entries, as_of):
-    results = []
-    invoices = [e for e in entries if e.kind == 'invoice' and e.amount > 0]
-    keys = Counter((e.party.casefold(), e.ref.casefold()) for e in invoices if e.party and e.ref)
-    repeated = {key for key, count in keys.items() if count > 1}
-    overdue = [e for e in invoices if e.day and e.day < as_of and
-               (e.party.casefold(), e.ref.casefold()) not in repeated]
-    for e in sorted(entries, key=lambda row: row.underbilled, reverse=True):
-        if e.underbilled:
-            results.append(('Possible underbilling', e.underbilled, f'{e.party or "Customer"} • {e.ref or "invoice"}',
-                            'Check the agreed amount for this invoice, including approved discounts and changes. If the difference is valid, issue the missing charge.', e.source))
-    for e in sorted(overdue, key=lambda item: item.amount, reverse=True):
-        results.append(('Overdue customer balance', e.amount,
-                        f'{e.party or "Customer"} • {e.ref or "invoice"} • {(as_of-e.day).days} days overdue',
-                        'Check the bank for a recent receipt, then send the client the invoice and ask for a payment date.', e.source))
-    for e in invoices:
-        if not e.day:
-            results.append(('Missing invoice due date', e.amount, f'{e.party or "Customer"} • {e.ref or "invoice"}',
-                            'Add the agreed due date so this balance can be aged and tracked.', e.source))
+def matching_references(entries):
     groups = defaultdict(list)
-    for e in entries:
-        if e.party and e.ref and e.amount and e.status not in CLOSED and (e.kind in {'invoice', 'payable'} or e.kind == 'actual' and e.amount < 0):
-            key = (e.kind, e.party.casefold(), e.ref.casefold())
-            if e.kind == 'actual':
-                key += (e.day, e.amount)
-            groups[key].append(e)
-    for group in groups.values():
-        if len(group) > 1:
-            e = group[0]
-            results.append(('Possible duplicate ' + {'invoice': 'invoice', 'payable': 'supplier bill', 'actual': 'payment'}[e.kind],
-                            sum(abs(row.amount) for row in group[1:]), f'{e.party} • {e.ref} • {len(group)} matching rows',
-                            'Compare the original invoice and bank references before correcting entries or requesting a refund.',
-                            ', '.join(row.source for row in group)))
-    return overdue, results
+    for entry in entries:
+        if not entry.party or not entry.ref or not entry.amount or entry.status in CLOSED:
+            continue
+        key = (entry.kind, entry.party.casefold(), entry.ref.casefold())
+        if entry.kind in {'invoice', 'payable'} and entry.amount > 0:
+            groups[key].append(entry)
+        elif entry.kind == 'actual' and entry.amount < 0:
+            groups[key + (entry.day, entry.amount)].append(entry)
+    return [group for group in groups.values() if len(group) > 1]
+
+
+def cash_priorities(entries, as_of, excluded):
+    week_end = as_of + timedelta(days=6)
+    overdue, receipts, bills = [], [], []
+    for entry in entries:
+        if entry.source in excluded or entry.status in CLOSED or entry.amount <= 0 or not entry.day:
+            continue
+        if entry.kind == 'invoice':
+            if entry.day < as_of:
+                overdue.append(entry)
+            elif entry.day <= week_end:
+                receipts.append(entry)
+        elif entry.kind == 'payable' and entry.day <= week_end:
+            bills.append(entry)
+    return (sorted(overdue, key=lambda e: (-e.amount, e.day)),
+            sorted(receipts, key=lambda e: (e.day, -e.amount)),
+            sorted(bills, key=lambda e: (e.day, -e.amount)))
+
+
+def funding_gap(rows, opening, minimum, scenario=1):
+    lowest = min(opening, *(row[scenario] for row in rows))
+    return max(0, round(minimum - lowest, 2))
 
 
 def loan_schedule(principal, annual_pct, months, first_due):
