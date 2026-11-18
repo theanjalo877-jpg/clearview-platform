@@ -112,7 +112,7 @@ def render():
             elif coverage:
                 st.info("Clearview couldn’t identify a supported table. Check Workbook details for the column combinations it can read.")
             else:
-                st.info("Upload a workbook or try the sample from the sidebar.")
+                st.info("Upload a workbook or try the sample above.")
         else:
             overdue, results = findings(scope, as_of)
             left, mid, right = st.columns(3)
@@ -128,20 +128,20 @@ def render():
             if not any(e.kind == "invoice" for e in scope):
                 st.caption("Customer invoice data is needed to measure overdue balances or underbilling.")
             if overdue:
-            ageing = [0, 0, 0, 0]
-            for entry in overdue:
-                days_late = (as_of - entry.day).days
-                ageing[min((days_late - 1) // 30, 3)] += entry.amount
-            chart = go.Figure(go.Bar(
-                x=["1–30 days", "31–60 days", "61–90 days", "91+ days"],
-                y=[float(value) for value in ageing],
-                marker_color=["#9a84ed", "#7553d8", "#5b39bc", "#40267e"],
-                hovertemplate=f"%{{x}}<br>{currency} %{{y:,.2f}}<extra></extra>",
-            ))
-            chart.update_layout(title="Overdue cash by age", template="plotly_white", height=250,
-                                margin=dict(l=16, r=16, t=43, b=16), yaxis_title=currency)
-            st.plotly_chart(chart, config={"displayModeBar": False}, key="overdue-ageing")
-        for title, amount, detail, action, source in results[:100]:
+                ageing = [0, 0, 0, 0]
+                for entry in overdue:
+                    days_late = (as_of - entry.day).days
+                    ageing[min((days_late - 1) // 30, 3)] += entry.amount
+                chart = go.Figure(go.Bar(
+                    x=["1–30 days", "31–60 days", "61–90 days", "91+ days"],
+                    y=[float(value) for value in ageing],
+                    marker_color=["#9a84ed", "#7553d8", "#5b39bc", "#40267e"],
+                    hovertemplate=f"%{{x}}<br>{currency} %{{y:,.2f}}<extra></extra>",
+                ))
+                chart.update_layout(title="Overdue cash by age", template="plotly_white", height=250,
+                                    margin=dict(l=16, r=16, t=43, b=16), yaxis_title=currency)
+                st.plotly_chart(chart, config={"displayModeBar": False}, key="overdue-ageing")
+            for title, amount, detail, action, source in results[:100]:
                 with st.container(border=True):
                     st.subheader(f"{title} · {format_cash(amount)}")
                     st.text(detail)
@@ -233,6 +233,16 @@ def render():
             st.download_button("Download forecast", downloads(["Date", "Expected cash", "Receipts delayed", "Cash minimum"], rows), "clearview-forecast.csv", "text/csv")
 
     with sources:
+        actual = [e for e in scope if e.kind == "actual" and e.day <= as_of]
+        if actual:
+            receipts = sum(e.amount for e in actual if e.amount > 0)
+            payments = -sum(e.amount for e in actual if e.amount < 0)
+            st.header("Cleared cash movements")
+            a, b, c = st.columns(3)
+            a.metric("Cash received", format_cash(receipts))
+            b.metric("Cash paid out", format_cash(payments))
+            c.metric("Net cash movement", format_cash(receipts - payments))
+            st.caption("Calculated from all dated actual cash rows through the report date. Compare with the bank before using these totals to make a payment decision.")
         st.header("What Clearview read")
         if coverage:
             st.dataframe([dict(zip(["Sheet", "Detected table", "Rows read", "Rows skipped"], row)) for row in coverage], hide_index=True)
