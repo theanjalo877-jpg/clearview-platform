@@ -1,7 +1,6 @@
-Anjalo's# clearview-platform
+# ClearView Business Intelligence
 
-
-## Run ClearView
+## Run locally
 
 ```sh
 python -m pip install -r requirements.txt

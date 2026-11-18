@@ -39,14 +39,21 @@ def downloads(headers, rows):
     return output.getvalue()
 
 
+def clear_sample():
+    st.session_state["finance_sample"] = False
+
+
 def render():
     today = datetime.now(ZoneInfo("Asia/Dubai")).date()
     st.markdown(HERO.read_text(encoding="utf-8"), unsafe_allow_html=True)
 
     with st.container(border=True):
         main, example = st.columns([3, 1])
-        upload = main.file_uploader("Upload your Excel workbook", type=["xlsx", "xlsm"], help="Supported tables include invoices, supplier bills, expenses and cash movements.")
-        sample = example.checkbox("Try sample data", value=False, disabled=upload is not None)
+        upload = main.file_uploader("Upload your Excel workbook", type=["xlsx", "xlsm"],
+                                    help="Supported tables include invoices, supplier bills, expenses and cash movements.",
+                                    key="finance_upload", on_change=clear_sample)
+        opted_in = example.checkbox("Try sample data", key="finance_sample", disabled=upload is not None)
+        sample = opted_in and upload is None
     with st.sidebar:
         st.header("Report settings")
         fallback = st.selectbox("Currency for unlabeled columns", ["AED", "USD", "EUR", "GBP", "SAR", "INR", "CAD", "AUD"])
@@ -57,7 +64,7 @@ def render():
         try:
             entries, coverage, issues = load(upload.getvalue() if upload is not None else demo(as_of), fallback)
         except (ValueError, TypeError, OSError, BadZipFile, KeyError, InvalidFileException):
-            st.error("Clearview could not read this workbook. Save an unprotected Excel copy and check the sheet size before retrying.")
+            st.error("ClearView could not read this workbook. Save an unprotected Excel copy and check the sheet size before retrying.")
     with st.sidebar:
         companies = sorted({e.company for e in entries})
         company = st.selectbox("Business", companies) if companies else None
@@ -67,7 +74,7 @@ def render():
         return f"{currency} {value:,.2f}"
 
     scope = [e for e in entries if (e.company, e.currency) == (company, currency)]
-    if sample and upload is None:
+    if sample:
         st.caption("Sample data · Fictional transactions")
     groups = matching_references(scope)
     ambiguous = {e.source for group in groups for e in group if e.kind in {"invoice", "payable"}}
@@ -137,8 +144,8 @@ def render():
     with forecast:
         st.header("How much extra cash might you need?")
         a, b, c, d = st.columns(4)
-        opening = a.number_input(f"Cash available now ({currency})", value=10000.0 if sample and upload is None else None,
-                                 key=f"opening-{company}-{currency}-{'sample' if sample and upload is None else 'workbook'}",
+        opening = a.number_input(f"Cash available now ({currency})", value=10000.0 if sample else None,
+                                 key=f"opening-{company}-{currency}-{'sample' if sample else 'workbook'}",
                                  step=1000.0, help="Enter the verified bank and cash balance at the start of the report date.")
         buffer = b.number_input(f"Minimum cash to keep ({currency})", min_value=0.0, value=0.0, step=500.0)
         days = c.selectbox("Forecast length", [30, 60, 90, 180], index=2)
@@ -256,7 +263,7 @@ def render():
             b.metric("Cash paid out", format_cash(payments))
             c.metric("Net cash movement", format_cash(receipts - payments))
             st.caption("Calculated from all dated actual cash rows through the report date. Compare with the bank before using these totals to make a payment decision.")
-        st.header("What Clearview read")
+        st.header("What ClearView read")
         if coverage:
             st.dataframe([dict(zip(["Sheet", "Detected table", "Rows read", "Rows skipped"], row)) for row in coverage], hide_index=True)
         if issues:
