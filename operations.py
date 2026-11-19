@@ -1,6 +1,7 @@
 import io
 import re
 import textwrap
+from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from docx import Document
+
+from upload_guide import chart_motion, show_guide
 
 # ============================================================
 # PREMIUM DESIGN — ORIGINAL VISUAL LANGUAGE RETAINED
@@ -27,11 +30,30 @@ def safe_text(value):
 
 def reset_workspace():
     st.session_state.files = {}
+    st.session_state.operations_sample = False
+    st.session_state.operations_removed = set()
     st.session_state.uploader_key += 1
 
 
-def file_signature(file):
-    return f"{file.name}:{file.size}"
+def sync_uploads(widget_key):
+    uploads = st.session_state[widget_key] or []
+    current = {(file.name, sha256(file.getvalue()).hexdigest()): file for file in uploads}
+    removed = st.session_state.get("operations_removed", set()).intersection(current)
+    st.session_state.operations_removed = removed
+    st.session_state.files = {key: file for key, file in current.items() if key not in removed}
+    if uploads:
+        st.session_state.operations_sample = False
+
+
+SAMPLE_OPERATIONS = b"""Order ID,Date,Product,Category,Revenue,Cost,Discount,Delivery Status,Waiting Minutes
+SO-101,2026-04-01,Desk Lamp,Lighting,240,145,30,Delivered,18
+SO-102,2026-04-02,Display Rack,Fixtures,680,370,0,Delivered,23
+SO-103,2026-04-03,Desk Lamp,Lighting,215,145,55,Delayed,55
+SO-104,2026-04-04,Storage Bin,Storage,180,115,10,Delivered,16
+SO-105,2026-04-05,Display Rack,Fixtures,620,370,60,Delayed,64
+SO-106,2026-04-06,Storage Bin,Storage,155,115,35,Pending,37
+SO-107,2026-04-07,Display Rack,Fixtures,650,360,20,Delivered,20
+"""
 
 
 def extract_word_document(file):
@@ -67,6 +89,26 @@ def read_file(file):
         return {"type":"Unsupported","name":file.name,"data":None}
     except Exception as exc:
         return {"type":"Error","name":file.name,"data":str(exc)}
+
+
+def word_business_tables(document):
+    numeric_fields = ("revenue", "cost", "profit", "discount", "stock", "reorder",
+                      "salary", "hours", "wait", "quantity", "complaints", "delay")
+    exact_names = {alias for field in (*numeric_fields, "status") for alias in SEMANTIC_ALIASES[field]}
+    for index, rows in enumerate(document["tables"], start=1):
+        headers = rows[0]
+        normalised = [normalised_name(h) for h in headers]
+        if (len(rows) < 2 or len(headers) < 2 or not all(normalised)
+                or len(set(normalised)) != len(headers) or not exact_names.intersection(normalised)):
+            continue
+        data = pd.DataFrame(rows[1:], columns=headers).replace(r"^\s*$", None, regex=True).dropna(how="all")
+        fields = infer_semantics(data)
+        for field in numeric_fields:
+            if column := fields[field]:
+                data[column] = pd.to_numeric(data[column], errors="coerce")
+        status = fields["status"]
+        if any(fields[field] and data[fields[field]].notna().any() for field in numeric_fields) or (status and data[status].notna().any()):
+            yield {"type": "Table", "name": f"{document['name']} · table {index}", "data": data}
 
 
 def clean_columns(df):
@@ -188,7 +230,7 @@ def analyse_business_table(df):
 
     # Revenue leakage: discounts, cost pressure, negative/low margin.
     rev=s.get("revenue"); disc=s.get("discount"); cost=s.get("cost"); profit=s.get("profit")
-    if rev:
+    if rev and pd.to_numeric(df[rev], errors="coerce").notna().any():
         r=pd.to_numeric(df[rev],errors="coerce")
         if disc:
             d=pd.to_numeric(df[disc],errors="coerce").fillna(0)
@@ -313,11 +355,12 @@ def make_visual_suite(df):
     if cat and rev:
         d=pd.DataFrame({"Category":df[cat].fillna("Unknown").astype(str),"Revenue":pd.to_numeric(df[rev],errors="coerce")}).dropna()
         d=d.groupby("Category",as_index=False).sum().sort_values("Revenue",ascending=False).head(8)
+        d=d[d["Revenue"] > 0]
         if len(d)>=2:
             fig=px.pie(d,names="Category",values="Revenue",hole=.52,color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_traces(textposition="inside",textinfo="percent+label",hovertemplate="%{label}<br>Revenue: %{value:,.2f}<br>Share: %{percent}<extra></extra>")
             fig.update_layout(title="Revenue mix by category")
-            figs.append(("Revenue mix","The donut shows which categories actually carry the revenue base instead of presenting a raw product list.",add_labels(fig)))
+            figs.append(("Revenue mix","Share of positive revenue across the categories shown, up to eight.",add_labels(fig)))
 
     # 3. Category revenue vs cost / profit.
     if cat and rev and cost:
@@ -378,7 +421,7 @@ def make_visual_suite(df):
     if rev and disc:
         d=pd.DataFrame({"Revenue":pd.to_numeric(df[rev],errors="coerce"),"Discount":pd.to_numeric(df[disc],errors="coerce")}).dropna()
         if len(d)>=3:
-            fig=px.scatter(d,x="Revenue",y="Discount",color_discrete_sequence=["#6C7CFF"],trendline="ols" if len(d)>=20 else None)
+            fig=px.scatter(d,x="Revenue",y="Discount",color_discrete_sequence=["#6C7CFF"],trendline=None)
             fig.update_layout(title="Discounting versus sales",xaxis_title="Revenue / sales",yaxis_title="Discount")
             figs.append(("Discount leakage","High discounts attached to low-value transactions are a direct place to investigate margin leakage and discount-rule effectiveness.",add_labels(fig)))
 
@@ -411,15 +454,23 @@ def render():
     if "files" not in st.session_state: st.session_state.files={}
     if "uploader_key" not in st.session_state: st.session_state.uploader_key=0
 
+    show_guide("operations")
+    widget_key = f"uploader_{st.session_state.uploader_key}"
     with st.container(border=True):
-        uploaded = st.file_uploader(
+        upload, example = st.columns([3, 1])
+        upload.file_uploader(
             "Upload your business files",
             type=["csv", "xlsx", "xls", "docx", "txt"],
             accept_multiple_files=True,
-            key=f"uploader_{st.session_state.uploader_key}",
+            key=widget_key,
+            on_change=sync_uploads,
+            args=(widget_key,),
         )
-    if uploaded:
-        for f in uploaded: st.session_state.files[file_signature(f)]=f
+        sample = example.checkbox("Try sample data", key="operations_sample",
+                                  disabled=bool(st.session_state.files))
+        if sample:
+            example.download_button("Download sample CSV", SAMPLE_OPERATIONS,
+                                    "clearview-sample-operations.csv", "text/csv")
 
     if st.session_state.files:
         st.markdown("**Files in this workspace**")
@@ -428,17 +479,29 @@ def render():
             with c1: st.markdown(f"<div class='file-icon'>{safe_text(suffix[:4])}</div>",unsafe_allow_html=True)
             with c2: st.markdown(f"**{safe_text(f.name)}**<br><span style='color:#98A2B3;font-size:11px'>{f.size/1024:.0f} KB</span>",unsafe_allow_html=True)
             with c3:
-                if st.button("Remove",key=f"remove_{key}",use_container_width=True): del st.session_state.files[key]; st.rerun()
+                if st.button("Remove", key=f"remove_{key}", use_container_width=True):
+                    st.session_state.operations_removed.add(key)
+                    del st.session_state.files[key]
+                    st.rerun()
         if st.button("Clear all files",key="clear_all"):
             reset_workspace(); st.rerun()
 
-    if not st.session_state.files:
+    if not st.session_state.files and not sample:
         html('<div class="empty-state"><div class="empty-icon">◈</div><div class="empty-title">Your business workspace is ready.</div><div class="empty-copy">Add your files above and ClearView will build the decision view from those files.</div></div><div class="footer">ClearView Business Intelligence<br><strong>ATW</strong> · an independent business analytics project<br>© 2026 Anjalo Theophine Wilson · All rights reserved</div>')
         st.stop()
 
-    results=[read_file(f) for f in st.session_state.files.values()]
+    if sample:
+        st.caption("Sample data · Fictional sales and delivery records")
+        results = [{"type": "Table", "name": "Sample sales and deliveries",
+                    "data": pd.read_csv(io.BytesIO(SAMPLE_OPERATIONS))}]
+    else:
+        results = [read_file(f) for f in st.session_state.files.values()]
     table_results=[r for r in results if r["type"]=="Table"]
     document_results=[r for r in results if r["type"]=="Document"]
+    for document in document_results:
+        charts_from_document = list(word_business_tables(document))
+        document["chart_tables"] = len(charts_from_document)
+        table_results.extend(charts_from_document)
     errors=[r for r in results if r["type"] in ("Error","Unsupported")]
     for r in table_results: r["data"]=clean_columns(r["data"])
 
@@ -448,6 +511,36 @@ def render():
     m1,m2,m3,m4=st.columns(4)
     for col,(label,value,note) in zip((m1,m2,m3,m4),[("Files",len(results),"in this workspace"),("Records",f"{total_rows:,}","rows across tables"),("Fields",f"{total_columns:,}","columns across tables"),("Documents",len(document_results),"Word / text files")]):
         with col: html(f'<div class="metric-card"><div class="metric-label">{safe_text(label)}</div><div class="metric-value">{safe_text(value)}</div><div class="metric-note">{safe_text(note)}</div></div>')
+
+    # ============================================================
+    # MULTI-GRAPH STAKEHOLDER DASHBOARD
+    # ============================================================
+    chart_motion()
+    if not table_results:
+        st.info("No chart-ready table was found. Open Supporting evidence to read the extracted text. Add a structured table with business columns to produce charts.")
+    for idx,result in enumerate(table_results):
+        df=result["data"]; ctx=business_context(df)
+        html(f'<div class="section-head"><div class="section-kicker">Stakeholder visual dashboard · {safe_text(result["name"])}</div><div class="section-title">See the story, not just the rows.</div><div class="section-copy">Different charts answer different business questions: contribution, mix, trend, leakage, inventory risk, order performance and workforce capacity.</div></div>')
+        figs=make_visual_suite(df)
+        if not figs:
+            st.info("The file does not contain enough recognised business fields for the specialised visual dashboard. The raw data remains available below.")
+        else:
+            for j,(title,desc,fig) in enumerate(figs):
+                chart_key = sha256(fig.to_json().encode()).hexdigest()[:16]
+                with st.container(key=f"cv-chart-ops-{idx}-{j}-{chart_key}"):
+                    chart_title(title,desc)
+                    st.plotly_chart(fig, use_container_width=True,
+                                    config={"displaylogo": False, "responsive": True})
+        with st.expander(f"Inspect {result['name']} data",expanded=False):
+            st.dataframe(df,use_container_width=True,height=330)
+
+        # Compact business interpretation based on detected domain.
+        if ctx=="workforce":
+            html('<div class="insight suggestion"><div class="insight-label">Workforce interpretation</div><div class="insight-title">Use cost + hours + workload together before changing headcount.</div><div class="insight-body">A dashboard should identify under-utilised capacity, overtime pressure and cost concentration. It should not automatically tell management to dismiss employees. The better analytical sequence is demand → workload → required capacity → schedule optimisation → only then structural headcount decisions if supported by evidence.</div></div>')
+        elif ctx=="inventory":
+            html('<div class="insight suggestion"><div class="insight-label">Inventory interpretation</div><div class="insight-title">Separate stockout risk from excess-stock risk.</div><div class="insight-body">A single “inventory” number hides two opposite problems. ClearView therefore maps current stock against reorder level so stakeholders can see what may cause lost sales and what may be tying up cash.</div></div>')
+        elif ctx=="sales_customer":
+            html('<div class="insight suggestion"><div class="insight-label">Customer interpretation</div><div class="insight-title">Connect customer behaviour to commercial outcomes.</div><div class="insight-body">Use category, customer, order status, discount and revenue relationships to identify where conversion, retention or margin is being lost rather than treating every transaction equally.</div></div>')
 
     # ============================================================
     # DECISION VIEW
@@ -464,30 +557,6 @@ def render():
             html(f'<div class="insight-strip"><div class="decision-card red"><div class="tag" style="color:#F04438">Problem · {safe_text(source)}</div><h4>{safe_text(title)}</h4><p>{safe_text(evidence)}</p></div><div class="decision-card green"><div class="tag" style="color:#12B76A">Solution</div><h4>Recommended intervention</h4><p>{safe_text(sol)}</p></div><div class="decision-card blue"><div class="tag" style="color:#315CF6">Management action</div><h4>What to do next</h4><p>{safe_text(act)}</p></div></div>')
     else:
         html('<div class="insight solution"><div class="insight-label">No high-confidence problem triggered</div><div class="insight-title">The current file does not support a specific business diagnosis.</div><div class="insight-body">Add more relevant business measures such as product/category, customer, revenue, cost, stock, supplier, order status, employee, salary or working-hours data.</div></div>')
-
-    # ============================================================
-    # MULTI-GRAPH STAKEHOLDER DASHBOARD
-    # ============================================================
-    for idx,result in enumerate(table_results):
-        df=result["data"]; ctx=business_context(df)
-        html(f'<div class="section-head"><div class="section-kicker">Stakeholder visual dashboard · {safe_text(result["name"])}</div><div class="section-title">See the story, not just the rows.</div><div class="section-copy">Different charts answer different business questions: contribution, mix, trend, leakage, inventory risk, order performance and workforce capacity.</div></div>')
-        figs=make_visual_suite(df)
-        if not figs:
-            st.info("The file does not contain enough recognised business fields for the specialised visual dashboard. The raw data remains available below.")
-        else:
-            for j,(title,desc,fig) in enumerate(figs):
-                chart_title(title,desc)
-                st.plotly_chart(fig,use_container_width=True,config={"displaylogo":False,"responsive":True})
-        with st.expander(f"Inspect {result['name']} data",expanded=False):
-            st.dataframe(df,use_container_width=True,height=330)
-
-        # Compact business interpretation based on detected domain.
-        if ctx=="workforce":
-            html('<div class="insight suggestion"><div class="insight-label">Workforce interpretation</div><div class="insight-title">Use cost + hours + workload together before changing headcount.</div><div class="insight-body">A dashboard should identify under-utilised capacity, overtime pressure and cost concentration. It should not automatically tell management to dismiss employees. The better analytical sequence is demand → workload → required capacity → schedule optimisation → only then structural headcount decisions if supported by evidence.</div></div>')
-        elif ctx=="inventory":
-            html('<div class="insight suggestion"><div class="insight-label">Inventory interpretation</div><div class="insight-title">Separate stockout risk from excess-stock risk.</div><div class="insight-body">A single “inventory” number hides two opposite problems. ClearView therefore maps current stock against reorder level so stakeholders can see what may cause lost sales and what may be tying up cash.</div></div>')
-        elif ctx=="sales_customer":
-            html('<div class="insight suggestion"><div class="insight-label">Customer interpretation</div><div class="insight-title">Connect customer behaviour to commercial outcomes.</div><div class="insight-body">Use category, customer, order status, discount and revenue relationships to identify where conversion, retention or margin is being lost rather than treating every transaction equally.</div></div>')
 
     # ============================================================
     # DATA QUALITY — SUPPORTING INFORMATION, NOT THE MAIN DIAGNOSIS
@@ -510,6 +579,8 @@ def render():
         for doc in document_results:
             words=len(re.findall(r"\b\w+\b",doc.get("text",""))); tables=len(doc.get("tables",[]))
             html(f'<div class="insight suggestion"><div class="insight-label">Document reviewed</div><div class="insight-title">{safe_text(doc["name"])}</div><div class="insight-body">ClearView extracted approximately <strong>{words:,}</strong> words and <strong>{tables:,}</strong> table(s).</div></div>')
+            if not doc["chart_tables"]:
+                st.caption("Supporting evidence only. Use a Word table with recognisable headers and valid values, or add a CSV or Excel file for charts.")
             with st.expander(f"Read extracted content · {doc['name']}"):
                 st.text_area("Extracted text",doc.get("text","")[:30000],height=260,key=f"text_{doc['name']}")
                 for ti,table in enumerate(doc.get("tables",[])):

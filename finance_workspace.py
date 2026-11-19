@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from hashlib import sha256
 from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo
 from zipfile import BadZipFile
@@ -8,6 +9,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from openpyxl import Workbook
 from openpyxl.utils.exceptions import InvalidFileException
+
+from upload_guide import chart_motion, show_guide
 
 from finance import CLOSED, cash_priorities, funding_gap, load, loan_schedule, matching_references, projection
 
@@ -40,9 +43,47 @@ def clear_sample():
     st.session_state["finance_sample"] = False
 
 
+def render_cash_charts(overdue, receipts, bills, scope, ambiguous, currency, data_key):
+    if not scope:
+        return
+    chart_motion()
+    st.subheader("Cash at a glance")
+    left, right = st.columns(2)
+    with left, st.container(key=f"cv-chart-cash-week-{data_key}"):
+        st.markdown("**Cash due in the current window**")
+        labels = ["Overdue receipts", "Receipts due in 7 days", "Bills due now or in 7 days"]
+        values = [sum(float(e.amount) for e in rows) for rows in (overdue, receipts, bills)]
+        present = [any(e.kind == kind for e in scope) for kind in ("invoice", "invoice", "payable")]
+        if any(present):
+            bar = go.Figure(go.Bar(x=[label for label, found in zip(labels, present) if found],
+                                  y=[value for value, found in zip(values, present) if found],
+                                  marker_color=[color for color, found in zip(["#d98644", "#149683", "#5667af"], present) if found],
+                                  hovertemplate=f"{currency} %{{y:,.2f}}<extra></extra>"))
+            bar.update_layout(height=280, margin=dict(l=15, r=15, t=16, b=35), yaxis_title=currency,
+                              xaxis=dict(automargin=True))
+            st.plotly_chart(bar, config={"displayModeBar": False})
+        else:
+            st.info("Add invoices or supplier bills to see amounts due.")
+    with right, st.container(key=f"cv-chart-cash-mix-{data_key}"):
+        st.markdown("**Open balance mix**")
+        balances = [sum(float(e.amount) for e in scope if e.kind == kind and e.status not in CLOSED
+                        and e.source not in ambiguous and e.amount > 0) for kind in ("invoice", "payable")]
+        if any(balances):
+            pie = go.Figure(go.Pie(labels=["Customer balances", "Supplier balances"], values=balances, hole=.60,
+                                  marker_colors=["#149683", "#5667af"], textinfo="percent",
+                                  hovertemplate=f"%{{label}}<br>{currency} %{{value:,.2f}}<extra></extra>"))
+            pie.update_layout(height=280, margin=dict(l=15, r=15, t=16, b=35),
+                              legend=dict(orientation="h", y=-.05))
+            st.plotly_chart(pie, config={"displayModeBar": False})
+        else:
+            st.info("No positive open invoice or supplier balances were found in this report.")
+    st.caption("The donut includes undated open balances. Shared invoice or bill references are excluded pending review.")
+
+
 def render():
     today = datetime.now(ZoneInfo("Asia/Dubai")).date()
 
+    show_guide("finance")
     with st.container(border=True):
         main, example = st.columns([3, 1])
         upload = main.file_uploader("Upload your Excel workbook", type=["xlsx", "xlsm"],
@@ -56,9 +97,10 @@ def render():
         as_of = st.date_input("Report date", value=today)
         st.caption("Use one currency per table. Workbook data is processed in this app session.")
     entries, coverage, issues = [], [], []
-    if upload is not None or sample:
+    workbook = upload.getvalue() if upload is not None else demo(as_of) if sample else None
+    if workbook is not None:
         try:
-            entries, coverage, issues = load(upload.getvalue() if upload is not None else demo(as_of), fallback)
+            entries, coverage, issues = load(workbook, fallback)
         except (ValueError, TypeError, OSError, BadZipFile, KeyError, InvalidFileException):
             st.error("ClearView could not read this workbook. Save an unprotected Excel copy and check the sheet size before retrying.")
     with st.sidebar:
@@ -75,6 +117,11 @@ def render():
     groups = matching_references(scope)
     ambiguous = {e.source for group in groups for e in group if e.kind in {"invoice", "payable"}}
     overdue, receipts, bills = cash_priorities(scope, as_of, ambiguous)
+    if scope and workbook:
+        chart_key = sha256(workbook + repr((company, currency, as_of)).encode()).hexdigest()[:16]
+        render_cash_charts(overdue, receipts, bills, scope, ambiguous, currency, chart_key)
+    else:
+        st.info("Charts appear here when the workbook contains recognised finance rows. Open Workbook details to see what ClearView could read.")
     priorities, forecast, loans, sources = st.tabs(["Cash priorities", "Cash forecast", "Loan planner", "Workbook details"])
 
     with priorities:
