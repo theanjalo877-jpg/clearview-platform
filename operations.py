@@ -238,19 +238,37 @@ def analyse_business_table(df):
             total_r=valid.r.sum(); total_d=valid.d.sum()
             if total_r>0 and total_d/total_r>=.05:
                 pct=total_d/total_r*100
-                add_problem("Revenue leakage from discounting",f"Discounts represent approximately {pct:.1f}% of gross sales in the uploaded data.","Segment discounts by product, customer and order volume; remove blanket discounting where the incremental conversion or retention value does not cover the margin lost.","Prioritise high-discount/low-margin products and customers for discount-rule redesign.","high")
+                add_problem(
+                    "Discounts are taking a bite out of sales",
+                    f"Discounts equal {pct:.1f}% of the sales amount in this file.",
+                    "Check which products get the biggest discounts. See how much money is left after the discount and the cost.",
+                    "Pick one product where little money is left. Try a smaller discount and see what happens to sales.",
+                    "high",
+                )
         if cost:
             c=pd.to_numeric(df[cost],errors="coerce"); valid=pd.concat([r.rename("r"),c.rename("c")],axis=1).dropna()
             if not valid.empty and valid.r.sum()>0:
                 margin=(valid.r.sum()-valid.c.sum())/valid.r.sum()*100
                 if margin<25:
-                    add_problem("Margin pressure is limiting profitable growth",f"Calculated gross contribution from the uploaded revenue/cost fields is approximately {margin:.1f}%.","Break the margin down by product, category, supplier and customer segment, then target the largest controllable cost drivers rather than applying a blanket cost cut.","Protect high-contribution products and address low-contribution combinations first.","high")
+                    add_problem(
+                        "Costs are using up most of your sales",
+                        f"About {margin:.1f}% of sales is left after the costs shown in your file.",
+                        "Compare the selling price and cost of each product.",
+                        "Start with the product that leaves the least money. Check if you can buy it for less or sell it for more.",
+                        "high",
+                    )
 
     if profit:
         p=pd.to_numeric(df[profit],errors="coerce")
         if (p<0).any():
             loss_count=int((p<0).sum())
-            add_problem("Loss-making transactions or products are present",f"{loss_count:,} records contain negative profit.","Trace negative-profit records to price, discount, cost and volume drivers; redesign or restrict loss-making combinations where they do not serve a strategic purpose.","Rank loss-making products/customers and quantify their total contribution before deciding on pricing or portfolio changes.","high")
+            add_problem(
+                "Some sales lost money",
+                f"{loss_count:,} rows show a loss.",
+                "Check the price, discount and cost for the sales that lost the most money.",
+                "Pick one. Check the figures, then decide whether to raise the price or lower the cost.",
+                "high",
+            )
 
     # Inventory: stockouts / excess stock / reorder risk.
     stock=s.get("stock"); reorder=s.get("reorder"); qty=s.get("quantity")
@@ -258,13 +276,31 @@ def analyse_business_table(df):
         stv=pd.to_numeric(df[stock],errors="coerce"); ro=pd.to_numeric(df[reorder],errors="coerce")
         risk=(stv<ro).sum(); excess=(stv>ro*2).sum()
         if risk:
-            add_problem("Stockout risk is above the reorder threshold",f"{int(risk):,} records are below their configured reorder level.","Move from static replenishment to demand-led reorder rules using sales velocity, lead time and supplier reliability.","Prioritise SKUs below reorder level by revenue contribution and lead time.","high")
+            add_problem(
+                "Some items are running low",
+                f"{int(risk):,} stock rows are below the level set for reordering.",
+                "Check which low-stock items sell often or take a long time to arrive.",
+                "Count those items today. If the count is right, ask the supplier when they can deliver more.",
+                "high",
+            )
         if excess:
-            add_problem("Excess inventory is tying up working capital",f"{int(excess):,} records hold more than twice their configured reorder level.","Reduce replenishment for slow-moving SKUs and use targeted promotions, bundle offers or supplier renegotiation where appropriate.","Rank excess stock by inventory value and days/velocity so capital is released from the weakest movers.","high")
+            add_problem(
+                "You may have bought too much stock",
+                f"{int(excess):,} stock rows show more than twice the amount set for reordering.",
+                "Check how many of those items you sold last month.",
+                "Pause new orders for slow sellers. Ask the supplier whether you can return extra stock.",
+                "high",
+            )
     elif stock and qty:
         stv=pd.to_numeric(df[stock],errors="coerce")
         if len(stv.dropna())>5 and (stv==0).sum()>0:
-            add_problem("Zero-stock items may be causing lost sales",f"{int((stv==0).sum()):,} records show zero stock.","Connect stock levels to sales velocity and lead time to create dynamic reorder points instead of reacting after stock reaches zero.","Prioritise zero-stock products with historical sales or high revenue contribution.","high")
+            add_problem(
+                "Some items are out of stock",
+                f"{int((stv==0).sum()):,} rows show no stock left.",
+                "Check which of these items sold recently or have customers waiting.",
+                "Ask the supplier for a delivery date. Order the items with waiting customers first.",
+                "high",
+            )
 
     # Workforce: overstaffing / understaffing / cost per output.
     emp=s.get("employee"); salary=s.get("salary"); hours=s.get("hours"); dept=s.get("department")
@@ -276,20 +312,38 @@ def analyse_business_table(df):
             if len(cost_hour)>=5:
                 q90=cost_hour.quantile(.9); q10=cost_hour.quantile(.1)
                 if q90>q10*1.8:
-                    add_problem("Workforce cost is uneven across the available records",f"The highest hourly-equivalent labour costs are more than 1.8× the lower end of the distribution.","Compare pay, scheduled hours, workload and output together before changing staffing. Reallocate hours toward demand peaks and review roles with persistently high cost per unit of output.","Build a cost-versus-hours view by department/role and test schedule changes before permanent headcount decisions.","medium")
+                    add_problem(
+                        "Some staff hours cost much more than others",
+                        "Pay per hour varies widely in this file.",
+                        "Check whether roles, overtime or different shifts explain the higher cost.",
+                        "Look at one busy shift. Try moving hours from a quieter shift and check whether the work gets done.",
+                        "medium",
+                    )
     if dept and hours:
         d=pd.DataFrame({"dept":df[dept].astype(str),"hours":pd.to_numeric(df[hours],errors="coerce")}).dropna()
         if not d.empty:
             dep=d.groupby("dept")["hours"].sum().sort_values(ascending=False)
             if len(dep)>=3 and dep.iloc[0]>dep.mean()*1.6:
-                add_problem("Workforce hours are concentrated in a small number of teams",f"The highest-hour department accounts for materially more scheduled hours than the average department.","Match labour capacity to measurable workload, customer volume and service targets rather than cutting hours uniformly.","Compare department hours with revenue, orders or workload volume before making schedule or headcount decisions.","medium")
+                add_problem(
+                    "One team works many more hours",
+                    "The team with the most hours worked over 60% more hours than the average team.",
+                    "Check how much work that team handles and when it gets busiest.",
+                    "If the team is falling behind, see whether another team can help during the busiest hours.",
+                    "medium",
+                )
 
     # Customer / order operations.
     order=s.get("order"); customer=s.get("customer"); status=s.get("status")
     if status and order:
         stc=df[status].fillna("Unknown").astype(str).str.lower(); total=len(stc); bad=(~stc.str.contains("complete|completed|success|paid|delivered",regex=True)).sum()
         if total and bad/total>.15:
-            add_problem("Order conversion or fulfilment leakage is material",f"Approximately {bad/total*100:.1f}% of order/status records are outside a completed/successful state.","Break failed orders into payment, stock, fulfilment and customer-initiated reasons, then address the largest failure pathway.","Create a funnel from order created → paid → fulfilled → completed and quantify loss at each step.","high")
+            add_problem(
+                "Some orders are still open or need checking",
+                f"About {bad/total*100:.1f}% of orders have a status other than completed, paid or delivered.",
+                "Open the order list. Find out which orders are waiting for stock, payment or delivery.",
+                "Start with the oldest order that still needs action. Find out what is holding it up and update the customer.",
+                "high",
+            )
 
     if not problems:
         opportunities.append(("No material business issue triggered by the current rules","The current file does not contain enough evidence for a high-confidence business problem. Add customer, product, cost, inventory or workforce measures to deepen the diagnosis.","low"))
@@ -536,27 +590,27 @@ def render():
 
         # Compact business interpretation based on detected domain.
         if ctx=="workforce":
-            html('<div class="insight suggestion"><div class="insight-label">Workforce interpretation</div><div class="insight-title">Use cost + hours + workload together before changing headcount.</div><div class="insight-body">A dashboard should identify under-utilised capacity, overtime pressure and cost concentration. It should not automatically tell management to dismiss employees. The better analytical sequence is demand → workload → required capacity → schedule optimisation → only then structural headcount decisions if supported by evidence.</div></div>')
+            html('<div class="insight suggestion"><div class="insight-label">Staffing</div><div class="insight-title">Check the workload before changing shifts.</div><div class="insight-body">Look at when work piles up and when staff have time free. Try shifting hours to busier times first.</div></div>')
         elif ctx=="inventory":
-            html('<div class="insight suggestion"><div class="insight-label">Inventory interpretation</div><div class="insight-title">Separate stockout risk from excess-stock risk.</div><div class="insight-body">A single “inventory” number hides two opposite problems. ClearView therefore maps current stock against reorder level so stakeholders can see what may cause lost sales and what may be tying up cash.</div></div>')
+            html('<div class="insight suggestion"><div class="insight-label">Stock</div><div class="insight-title">Check what is running low and what is piling up.</div><div class="insight-body">Low stock can delay orders. Extra stock uses cash. Use the chart to see which items to check first.</div></div>')
         elif ctx=="sales_customer":
-            html('<div class="insight suggestion"><div class="insight-label">Customer interpretation</div><div class="insight-title">Connect customer behaviour to commercial outcomes.</div><div class="insight-body">Use category, customer, order status, discount and revenue relationships to identify where conversion, retention or margin is being lost rather than treating every transaction equally.</div></div>')
+            html('<div class="insight suggestion"><div class="insight-label">Sales and orders</div><div class="insight-title">Find where orders get held up.</div><div class="insight-body">Check which products have late orders or big discounts. Start with the one that affects the most customers or costs the most money.</div></div>')
 
     # ============================================================
     # DECISION VIEW
     # ============================================================
     problems,solutions,opportunities=aggregate_decisions(table_results)
-    html('<div class="section-head"><div class="section-kicker">Decision view</div><div class="section-title">Problem → Business impact → Action.</div><div class="section-copy">ClearView deliberately avoids generic recommendations such as “review the data”. Each triggered issue is translated into a business problem, an intervention and the management decision it supports.</div></div>')
+    html('<div class="section-head"><div class="section-kicker">Decision view</div><div class="section-title">What needs your attention?</div><div class="section-copy">See what your file shows, what to check, and what you can do next.</div></div>')
 
     if problems:
         for title,evidence,priority,source in problems[:8]:
             matching=[x for x in solutions if x[0]==title and x[2]==source]
             action=[x for x in opportunities if x[0]==title and x[3]==source]
-            sol=matching[0][1] if matching else "Investigate the driver and test a targeted operational intervention."
-            act=action[0][1] if action else "Prioritise the issue using measurable business impact."
-            html(f'<div class="insight-strip"><div class="decision-card red"><div class="tag" style="color:#F04438">Problem · {safe_text(source)}</div><h4>{safe_text(title)}</h4><p>{safe_text(evidence)}</p></div><div class="decision-card green"><div class="tag" style="color:#12B76A">Solution</div><h4>Recommended intervention</h4><p>{safe_text(sol)}</p></div><div class="decision-card blue"><div class="tag" style="color:#315CF6">Management action</div><h4>What to do next</h4><p>{safe_text(act)}</p></div></div>')
+            sol=matching[0][1] if matching else "Open the source file and check the rows behind this result."
+            act=action[0][1] if action else "Start with the item that costs you the most money or time."
+            html(f'<div class="insight-strip"><div class="decision-card red"><div class="tag" style="color:#F04438">From your file · {safe_text(source)}</div><h4>{safe_text(title)}</h4><p>{safe_text(evidence)}</p></div><div class="decision-card green"><div class="tag" style="color:#12B76A">Step 1</div><h4>What to check</h4><p>{safe_text(sol)}</p></div><div class="decision-card blue"><div class="tag" style="color:#315CF6">Step 2</div><h4>What to do next</h4><p>{safe_text(act)}</p></div></div>')
     else:
-        html('<div class="insight solution"><div class="insight-label">No high-confidence problem triggered</div><div class="insight-title">The current file does not support a specific business diagnosis.</div><div class="insight-body">Add more relevant business measures such as product/category, customer, revenue, cost, stock, supplier, order status, employee, salary or working-hours data.</div></div>')
+        html('<div class="insight solution"><div class="insight-label">What the file shows</div><div class="insight-title">No clear problem showed up in this file.</div><div class="insight-body">To check sales, add selling prices and costs. To check stock, add the amount on hand and when you reorder. To check staffing, add pay and hours worked.</div></div>')
 
     # ============================================================
     # DATA QUALITY — SUPPORTING INFORMATION, NOT THE MAIN DIAGNOSIS
