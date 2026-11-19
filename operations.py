@@ -408,8 +408,6 @@ def render():
     </style>
     """), unsafe_allow_html=True)
 
-    st.markdown(Path(__file__).with_name("operations_hero.html").read_text(encoding="utf-8"), unsafe_allow_html=True)
-
     if "files" not in st.session_state: st.session_state.files={}
     if "uploader_key" not in st.session_state: st.session_state.uploader_key=0
 
