@@ -76,10 +76,10 @@
    {left:centers.at(-1)+30+'px',opacity:0}
   ], {duration:step*(centers.length+1),delay,fill:'both'});
   glyphs.forEach((letter,index) => letter.animate([
-   {transform:'scale(1)',textShadow:'none'},
-   {transform:'scale(1.28)',textShadow:'0 0 14px #78f5dc',offset:.5},
-   {transform:'scale(1)',textShadow:'none'}
-  ], {duration:step*2,delay:delay+index*step,easing:'ease-in-out'}));
+   {transform:'scale(1)',color:'#f5fbff',textShadow:'none'},
+   {transform:'scale(1.28)',color:'#fffdf0',textShadow:'0 0 5px #fff5ce, 0 0 21px #ffcf79, 0 0 38px #ffad48',offset:.5},
+   {transform:'scale(1)',color:'#fff4d6',textShadow:'0 0 4px #ffe8a6, 0 0 13px #ffc064a8, 0 0 24px #ffab4348'}
+  ], {duration:step*2,delay:delay+index*step,easing:'ease-in-out',fill:'forwards'}));
  }
 </script>
 <script type="module">
