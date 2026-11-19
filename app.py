@@ -10,8 +10,9 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-def clear_finance_sample():
+def clear_samples():
     st.session_state["finance_sample"] = False
+    st.session_state["operations_sample"] = False
 
 
 masthead = st.container()
@@ -20,7 +21,7 @@ workspace = st.radio(
     "Choose a ClearView workspace",
     ["Finance", "Business operations"],
     horizontal=True,
-    on_change=clear_finance_sample,
+    on_change=clear_samples,
 )
 
 scene = "finance" if workspace == "Finance" else "operations"

@@ -1,4 +1,4 @@
-# Streamlit hosts the shared ClearView masthead in an HTML component.
+# Streamlit hosts the ClearView masthead, file guides, and interactive charts.
 streamlit>=1.50,<2.0
 pandas>=2.2,<3.0
 numpy>=1.26,<3.0
