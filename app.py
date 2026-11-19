@@ -29,6 +29,22 @@ masthead_html = Path(__file__).with_name("masthead.html").read_text(encoding="ut
 with masthead:
     components.html(masthead_html.replace("__SCENE__", scene), height=290)
 
+if scene == "finance":
+    demo_name = "ClearView_Finance_Demo.xlsx"
+    demo_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+else:
+    demo_name = "ClearView_Business_Operations_Demo.docx"
+    demo_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+st.download_button(
+    "Download client demo",
+    data=(Path(__file__).with_name("data") / demo_name).read_bytes(),
+    file_name=demo_name,
+    mime=demo_mime,
+    on_click="ignore",
+    help="Fictional Cedarline Fixtures data. Upload the downloaded file in this workspace to try the client presentation.",
+)
+
 if workspace == "Finance":
     from finance_workspace import render
 else:
