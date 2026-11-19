@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearView</title>
+<style>
+ *{box-sizing:border-box}
+ body{margin:0;font-family:system-ui,sans-serif}
+ .masthead{position:relative;isolation:isolate;overflow:hidden;height:288px;border-radius:24px;
+   background:radial-gradient(ellipse at 76% 90%,#215052,transparent 67%),linear-gradient(118deg,#0c1724,#132c3d);
+   color:#f5fbff;display:flex;align-items:center;padding:clamp(23px,5vw,75px)}
+ [data-scene=operations]{background:radial-gradient(ellipse at 76% 90%,#474066,transparent 67%),linear-gradient(118deg,#131629,#282940)}
+ .brand{z-index:2;position:relative}
+ h1{position:relative;width:max-content;margin:0;font-size:clamp(42px,7.1vw,102px);line-height:1;letter-spacing:-.055em;font-weight:780}
+ .glyph{display:inline-block}
+ .credit{margin:20px 0 0;color:#c4e1df;text-transform:uppercase;font-size:clamp(8px,1.1vw,12px);letter-spacing:.17em;font-weight:650}
+ .credit span{display:inline-block;animation:credit .9s cubic-bezier(.2,1,.25,1) both;animation-delay:calc(1.55s + var(--order)*.11s)}
+ @keyframes credit{from{opacity:0;filter:blur(5px);transform:translate(12px,7px)}to{opacity:1;filter:blur(0);transform:none}}
+ .loupe{position:absolute;pointer-events:none;z-index:2;top:.53em;left:0;width:.91em;height:.91em;border:2px solid #bbebe6;border-radius:50%;opacity:0;
+   transform:translate(-50%,-50%);box-shadow:0 0 10px #a8fff59c,inset 0 0 9px #c5fffc68;
+   background:linear-gradient(150deg,#edffff48,transparent 44%,#7cf2da28);}
+ .loupe::after{content:"";position:absolute;width:.40em;height:.075em;top:85%;left:82%;transform:rotate(45deg);transform-origin:left center;
+   background:linear-gradient(#def5f0,#4c8c8a);border-radius:4px;box-shadow:0 2px 3px #0007}
+ .art{position:absolute;right:0;inset-block:0;width:58%;pointer-events:none}
+ .art canvas,.art svg{width:100%;height:100%;display:block}
+ .art canvas{position:absolute;inset:0}
+ .art svg{opacity:.72}
+ [data-scene=finance] .ops-fallback,[data-scene=operations] .finance-fallback,.art.ready svg{display:none}
+ @media(max-width:650px){
+   .masthead{align-items:flex-start;padding-top:27px;border-radius:19px}
+   .art{width:100%;height:184px;top:auto;right:-7%;bottom:-5px}
+   .credit{margin-top:12px}
+ }
+ @media(prefers-reduced-motion:reduce){.credit span{animation:none}}
+</style>
+</head>
+<body>
+<header class="masthead" data-scene="__SCENE__">
+ <div class="brand">
+  <h1 aria-label="ClearView"><span aria-hidden="true" class="glyph">C</span><span aria-hidden="true" class="glyph">l</span><span aria-hidden="true" class="glyph">e</span><span aria-hidden="true" class="glyph">a</span><span aria-hidden="true" class="glyph">r</span><span aria-hidden="true" class="glyph">V</span><span aria-hidden="true" class="glyph">i</span><span aria-hidden="true" class="glyph">e</span><span aria-hidden="true" class="glyph">w</span><span class="loupe" aria-hidden="true"></span></h1>
+  <p class="credit"><span style="--order:0">An</span> <span style="--order:1">Anjalo</span> <span style="--order:2">Theophine</span> <span style="--order:3">Wilson</span> <span style="--order:4">Project</span></p>
+ </div>
+ <div class="art" aria-hidden="true">
+  <svg class="finance-fallback" viewBox="0 0 460 230">
+   <ellipse cx="246" cy="183" rx="170" ry="30" fill="#153239"/>
+   <path d="m84 124 144-48 177 47-149 55z" fill="#417070"/>
+   <path d="m115 91 126-37 117 34-123 46z" fill="#dce9df"/>
+   <path d="m145 96 39 3 28-21 29 9 42-19" fill="none" stroke="#388478" stroke-width="4"/>
+   <path d="m268 136 57-29 61 18-56 31z" fill="#172938" stroke="#73928d" stroke-width="2"/>
+   <ellipse cx="206" cy="143" rx="25" ry="8" fill="#bba363"/>
+   <ellipse cx="206" cy="137" rx="25" ry="8" fill="#ead38e"/>
+  </svg>
+  <svg class="ops-fallback" viewBox="0 0 460 230">
+   <ellipse cx="244" cy="185" rx="173" ry="30" fill="#201c37"/>
+   <path d="M89 130 245 82l161 43-150 61z" fill="#514864"/>
+   <path d="m207 119 61-23 69 9-60 25z" fill="#79778e"/>
+   <path d="M210 121l130-13v13l-130 15z" fill="#242839"/>
+   <g fill="#c99d73" stroke="#facfa7"><path d="m235 108 24-7v-23l-24 7z"/><path d="m263 109 22-7V84l-22 7z"/><path d="m300 99 24-7V68l-24 7z"/></g>
+   <path d="M121 119h39v20h-39zm34-13h28l14 18v15h-42z" fill="#f3b27c"/>
+   <path d="M164 110h16l10 14h-26z" fill="#353d53"/>
+   <circle cx="139" cy="140" r="8" fill="#1b2535"/><circle cx="181" cy="140" r="8" fill="#1b2535"/>
+  </svg>
+ </div>
+</header>
+<script>
+ const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+ if (!reduced.matches) {
+  const glyphs = [...document.querySelectorAll('.glyph')];
+  const lens = document.querySelector('.loupe');
+  const delay = 250, step = 145;
+  const centers = glyphs.map(letter => letter.offsetLeft + letter.offsetWidth / 2);
+  lens.animate([
+   {left:'-14px',opacity:0},
+   ...centers.map(center => ({left:center+'px',opacity:1})),
+   {left:centers.at(-1)+30+'px',opacity:0}
+  ], {duration:step*(centers.length+1),delay,fill:'both'});
+  glyphs.forEach((letter,index) => letter.animate([
+   {transform:'scale(1)',color:'#f5fbff',textShadow:'none'},
+   {transform:'scale(1.28)',color:'#fffdf0',textShadow:'0 0 5px #fff5ce, 0 0 21px #ffcf79, 0 0 38px #ffad48',offset:.5},
+   {transform:'scale(1)',color:'#fff4d6',textShadow:'0 0 4px #ffe8a6, 0 0 13px #ffc064a8, 0 0 24px #ffab4348'}
+  ], {duration:step*2,delay:delay+index*step,easing:'ease-in-out',fill:'forwards'}));
+ }
+</script>
+<script type="module">
+ const art = document.querySelector('.art');
+ const finance = document.querySelector('.masthead').dataset.scene === 'finance';
+ try {
+  const T = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js');
+  const scene = new T.Scene();
+  const camera = new T.OrthographicCamera(-5,5,3,-3,.1,80);
+  camera.position.set(5.4,6.2,9);
+  camera.lookAt(0,.45,0);
+  const renderer = new T.WebGLRenderer({antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = T.PCFSoftShadowMap;
+  scene.add(new T.HemisphereLight(0xe1f6ff,0x52606c,2));
+  const key = new T.DirectionalLight(0xffeed9,2.45);
+  key.position.set(-3,8,6);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024,1024);
+  key.shadow.normalBias = .025;
+  scene.add(key);
+  const set = new T.Group();
+  scene.add(set);
+  const material = (color,roughness=.66,metalness=.06) =>
+   new T.MeshStandardMaterial({color,roughness,metalness});
+  const ink = material(0x24344a), white = material(0xe1e8e8), teal = material(0x36ad93);
+  const metal = material(0xb1c2cc,.34,.45), rubber = material(0x202331);
+  const gold = material(0xecd080,.34,.67), carton = material(0xbb8251);
+  const tape = material(0xe5bf86), slate = material(finance ? 0x417a76 : 0x6d678f);
+  function part(parent,geometry,finish,x,y,z){
+   const mesh = new T.Mesh(geometry,finish);
+   mesh.position.set(x,y,z);
+   mesh.castShadow = mesh.receiveShadow = true;
+   parent.add(mesh);
+   return mesh;
+  }
+  function box(parent,finish,x,y,z,w,h,d){
+   return part(parent,new T.BoxGeometry(w,h,d),finish,x,y,z);
+  }
+  function group(parent,x,y,z){
+   const child = new T.Group();
+   child.position.set(x,y,z);
+   parent.add(child);
+   return child;
+  }
+  box(set,slate,0,-.22,0,7.5,.40,4.75);
+  box(set,ink,0,-.44,0,7.36,.10,4.62);
+  let update;
+  if (finance) {
+   const ledger = group(set,-1.45,.12,-.2);
+   ledger.rotation.y = -.13;
+   box(ledger,ink,0,-.08,0,2.6,.12,2.9);
+   box(ledger,white,0,0,0,2.52,.10,2.75);
+   box(ledger,teal,0,.06,-.91,2.10,.016,.30);
+   for (let i=0;i<7;i++){
+    box(ledger,slate,-.62,.063,-.5+i*.23,.68,.014,.035);
+    box(ledger,slate,.65,.063,-.5+i*.23,.45,.014,.035);
+   }
+   const calculator = group(set,1.23,.18,.9);
+   calculator.rotation.y = .22;
+   box(calculator,ink,0,0,0,1.47,.26,1.96);
+   box(calculator,teal,0,.135,-.65,1.17,.026,.34);
+   for(let row=0;row<4;row++)for(let col=0;col<4;col++)
+    box(calculator,col===3?teal:metal,-.48+col*.32,.145,-.23+row*.27,.22,.06,.18);
+   for(const [x,z,count] of [[2.55,-.9,8],[1.83,-1.5,5],[2.75,-1.68,3]])
+    for(let i=0;i<count;i++)part(set,new T.CylinderGeometry(.26,.26,.056,32),gold,x,.03+i*.054,z);
+   const barHeights = [.28,.4,.52,.65,.84,1.05];
+   const bars = barHeights.map((height,index) =>
+    box(set,teal,-.4+index*.33,height/2,-1.68,.20,height,.23));
+   update = progress => bars.forEach((bar,index)=>{
+    const gain = T.MathUtils.smoothstep(progress,index*.085,.55+index*.085);
+    bar.scale.y = .17+.83*gain;
+    bar.position.y = barHeights[index]*bar.scale.y/2;
+   });
+  } else {
+   const belt = group(set,-.15,.34,-.52);
+   box(belt,ink,0,0,0,5.38,.35,1.05);
+   for(let i=0;i<20;i++){
+    const roller = part(belt,new T.CylinderGeometry(.105,.105,.88,12),metal,-2.43+i*.255,.20,0);
+    roller.rotation.x = Math.PI/2;
+   }
+   for(const x of [-2.36,2.36])for(const z of [-.37,.37])
+    box(belt,metal,x,-.22,z,.15,.42,.15);
+   function parcel(parent,x,y,z,size){
+    const item = group(parent,x,y,z);
+    box(item,carton,0,size*.43,0,size,size*.86,size*.86);
+    box(item,tape,0,size*.87,0,.13,.018,size*.86);
+    box(item,white,size*.2,size*.51,size*.435,.18,.12,.017);
+    return item;
+   }
+   const parcels = [.56,.65,.54].map(size=>parcel(belt,0,.30,0,size));
+   const truck = group(set,0,.01,1.39);
+   box(truck,ink,0,.28,0,2.24,.22,.82);
+   box(truck,white,-.41,.79,0,1.34,.89,.87);
+   box(truck,teal,.71,.64,0,.71,.73,.83);
+   box(truck,ink,1.076,.78,0,.018,.27,.63);
+   for(const z of [-.43,.43]){
+    box(truck,ink,.78,.80,z,.30,.24,.020);
+    for(const x of [-.72,.70]){
+     const tyre=part(truck,new T.CylinderGeometry(.23,.23,.13,18),rubber,x,.22,z);
+     tyre.rotation.x=Math.PI/2;
+    }
+   }
+   update = progress => {
+    parcels.forEach((item,index)=>{
+     const phase=(progress+index/3+.12)%1;
+     item.position.x=-2.37+phase*4.74;
+     item.scale.setScalar(Math.min(1,phase*12,(1-phase)*12));
+    });
+    truck.position.x=-2.07+4.09*T.MathUtils.smoothstep(progress,0,.82);
+   };
+  }
+  art.append(renderer.domElement);
+  function draw(progress){
+   update(progress);
+   renderer.render(scene,camera);
+  }
+  function resize(){
+   const {width,height}=art.getBoundingClientRect();
+   if(width<1 || height<1)return;
+   const aspect=width/height;
+   const vertical=Math.max(2.75,4.45/aspect);
+   camera.left=-vertical*aspect;
+   camera.right=vertical*aspect;
+   camera.top=vertical;
+   camera.bottom=-vertical;
+   camera.updateProjectionMatrix();
+   renderer.setSize(width,height,false);
+   draw(reduced.matches ? .86 : 0);
+  }
+  resize();
+  art.classList.add('ready');
+  let progress=.86;
+  if(!reduced.matches){
+   const start=performance.now();
+   renderer.setAnimationLoop(now=>{
+    progress=Math.min(1,(now-start)/(finance?3300:6200));
+    draw(reduced.matches?.86:progress);
+    if(progress===1||reduced.matches)renderer.setAnimationLoop(null);
+   });
+  }
+  new ResizeObserver(()=>{
+   resize();
+   draw(progress);
+  }).observe(art);
+ } catch (error) {
+  art.querySelector('canvas')?.remove();
+  art.classList.remove('ready');
+ }
+</script>
+</body>
+</html>

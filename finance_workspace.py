@@ -1,6 +1,5 @@
 from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
-from pathlib import Path
 from zoneinfo import ZoneInfo
 from zipfile import BadZipFile
 import csv
@@ -11,8 +10,6 @@ from openpyxl import Workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from finance import CLOSED, cash_priorities, funding_gap, load, loan_schedule, matching_references, projection
-
-HERO = Path(__file__).with_name("finance_hero.html")
 
 def demo(today):
     book = Workbook()
@@ -45,7 +42,6 @@ def clear_sample():
 
 def render():
     today = datetime.now(ZoneInfo("Asia/Dubai")).date()
-    st.markdown(HERO.read_text(encoding="utf-8"), unsafe_allow_html=True)
 
     with st.container(border=True):
         main, example = st.columns([3, 1])
