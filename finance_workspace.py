@@ -144,13 +144,13 @@ def render():
             if not has_invoices and not has_bills:
                 st.info("This view needs invoice or supplier bill rows. Use Cash forecast for planned cash movements.")
             actions = [
-                ("Follow up", e, "Check for a recent receipt, then ask the customer for a payment date.")
+                ("Follow up", e, "Check your bank. If the money has not arrived, call the customer and ask when they will pay.")
                 for e in overdue
             ] + [
-                ("Confirm receipt", e, "Confirm the customer’s scheduled payment date.")
+                ("Confirm receipt", e, "Ask the customer to confirm the date they will pay.")
                 for e in receipts
             ] + [
-                ("Review bill", e, "Check approval and bank records before scheduling payment.")
+                ("Review bill", e, "Check that the bill was approved and that it has not been paid. Then choose a payment date.")
                 for e in bills
             ]
             if actions:
@@ -214,7 +214,7 @@ def render():
             if types:
                 st.caption("Loan payments are added separately. Use workbook rows that exclude this loan to avoid counting it twice.")
         if missing or past or ambiguous_rows:
-            st.warning(f"Excluded rows · {missing} missing a date · {past} past-due receipts or past planned movements · {ambiguous_rows} rows sharing an invoice or bill reference. Review the rows in Workbook details and update unresolved dates or records before using this forecast.")
+            st.warning(f"Excluded rows · {missing} missing a date · {past} past-due receipts or past planned movements · {ambiguous_rows} rows sharing an invoice or bill reference. Open Workbook details, then fix the dates or check the matching records before using this forecast.")
         if any(e.kind == "payable" and e.day and e.day < as_of for e in selected):
             st.caption("Overdue supplier bills with a usable date are assumed payable on the report date.")
         in_window = sum(as_of <= due <= as_of + timedelta(days=days) for due, _ in events)
@@ -320,14 +320,14 @@ def render():
                            "Workbook row": e.source} for e in pending], hide_index=True)
         if groups:
             st.subheader("Matching references to review")
-            st.caption("These rows share identifiers. Check whether they’re separate instalments, repeated entries, or already settled. Matching references alone don’t establish a loss.")
+            st.caption("These rows use the same reference. Check your bank and the original bill. You may find two payments, an instalment, or one payment entered twice.")
             st.dataframe([{"Record type": e.kind, "Counterparty": e.party, "Reference": e.ref, "Date": e.day,
                            f"Recorded amount ({currency})": float(abs(e.amount)), "Workbook row": e.source}
                           for group in groups for e in group], hide_index=True)
         underbilled = [e for e in scope if e.underbilled and e.source not in ambiguous]
         if underbilled:
             st.subheader("Invoices below their agreed amount")
-            st.caption("Compare against the approved price, discounts and changes before raising an additional charge.")
+            st.caption("Check the price you agreed with the customer, including any discounts or changes. If the invoice is too low, confirm the amount before sending a corrected bill.")
             st.dataframe([{"Customer": e.party, "Reference": e.ref, f"Difference ({currency})": float(e.underbilled),
                            "Workbook row": e.source} for e in underbilled], hide_index=True)
         st.markdown("""
